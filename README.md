@@ -6,3 +6,5 @@ Build:
 ```
 bash build.sh
 ```
+
+![Usage example](images/example.png)
