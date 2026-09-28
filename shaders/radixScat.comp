@@ -1,0 +1,66 @@
+#version 450
+
+layout(local_size_x = 256) in;
+
+layout(std430, binding = 1) buffer Indices {
+    uint indices[]; 
+};
+layout(std430, binding = 4) buffer Keys {
+    uvec2 keys[];
+};
+layout(std430, binding = 5) buffer TempIndices {
+    uint tempIndices[];
+};
+layout(std430, binding = 6) buffer TempKeys {
+    uvec2 tempKeys[];
+};
+layout(std430, binding = 7) buffer GroupOffset {
+    uint groupOffset[];
+}; 
+layout(std430, binding = 8) readonly buffer Offsets {
+    uint offsets[];
+};
+layout(std430, binding = 10) buffer Counter {
+    uint visibleCount;
+};
+
+uniform uint pass;
+shared uint temp[256];
+void main() {
+    uint lid = gl_LocalInvocationID.x;
+    uint gid = gl_WorkGroupID.x;
+    uint id = gl_GlobalInvocationID.x;
+
+    uvec2 key = uvec2(0xFFFFFFFF,0xFFFFFFFF);
+    uint digit = 0;
+    if (id < visibleCount) {
+        key = keys[id];
+        if (pass < 4) {
+            digit = (key.y >> (pass * 8)) & 0xFF;
+        } else {
+            digit = (key.x >> ((pass - 4) * 8)) & 0xFF;
+        }
+    }
+
+    temp[lid] = (id < visibleCount) ? digit : 0xFFFFFFFF;
+    barrier();
+
+    uint myRankInWorkgroup = 0;
+    if (id < visibleCount) {
+        for (uint i = 0; i < lid; i++) {
+            if (temp[i] == digit) {
+                myRankInWorkgroup++;
+            }
+        }
+    } 
+    // jako iskreno nezz zasto je nestabilno bez ovoga atomicAdd(groupOffset[index],1) bi trebo bit dovoljan
+    // kao problem je s frontama, a ballot intrukcije ne rade. udjecaj nije velik na performansu jer je kao 255 po threadu al živcira me.
+    // do svih stvari oko ovog sam najmanje sretan. 
+
+    if(id < visibleCount) {
+        uint globalPos = offsets[digit] + groupOffset[gid * 256 + digit] + myRankInWorkgroup;
+        
+        tempIndices[globalPos] = indices[id];
+        tempKeys[globalPos] = key;
+    }
+}

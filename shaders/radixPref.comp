@@ -1,0 +1,54 @@
+#version 450
+
+layout(local_size_x = 256) in;
+
+
+layout(std430, binding = 7) buffer GroupOffset
+{
+    uint groupOffsets[];
+};
+layout(std430, binding = 8) buffer Offsets
+{
+    uint offsets[];
+};
+
+layout(std430,binding=10) buffer Counter
+{
+    uint visibleCount;
+};
+
+// uniform uint numGroups;
+shared uint temp[256];
+
+void main()
+{
+    uint digit = gl_LocalInvocationID.x;
+    if (digit >= 256) return;
+    
+    uint numGroups = (visibleCount + 255) / 256;
+    
+    uint runningSum = 0;
+    for (uint g = 0; g < numGroups; g++)
+    {
+        uint idx = g * 256 + digit;
+        uint count = groupOffsets[idx];
+        
+        groupOffsets[idx] = runningSum;
+        runningSum += count;
+    }
+
+    temp[digit] = runningSum;
+    barrier();
+
+    for (uint stride = 1; stride < 256; stride <<= 1)
+    {
+        uint val = 0;
+        if (digit >= stride)
+            val = temp[digit - stride];
+        barrier();
+        temp[digit] += val;
+        barrier();
+    }
+
+    offsets[digit] = temp[digit] - runningSum;
+}

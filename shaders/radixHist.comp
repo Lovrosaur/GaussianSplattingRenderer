@@ -1,0 +1,53 @@
+#version 450
+
+
+layout(local_size_x = 256) in;
+
+layout(std430, binding = 4) buffer Keys
+{
+    uvec2 keys[];
+};
+
+layout(std430, binding = 7) buffer groupHistogram
+{
+    uint groupHist[];
+};
+
+layout(std430, binding = 8) buffer Offsets
+{
+    uint offsets[];
+};
+
+layout(std430,binding=10) buffer Counter
+{
+    uint visibleCount;
+};
+
+shared uint localHist[256];
+uniform uint pass;
+
+
+void main() {
+    uint lid = gl_LocalInvocationID.x;
+    uint gid = gl_WorkGroupID.x;
+
+    if(lid < 256) localHist[lid] = 0;
+    barrier();
+
+    uint id = gl_GlobalInvocationID.x;
+    if(id < visibleCount) {
+        uint digit;
+        if (pass < 4) {
+            digit = (keys[id].y >> (pass * 8)) & 0xFF;
+        } else {
+            digit = (keys[id].x >> ((pass - 4) * 8)) & 0xFF;
+        }
+        atomicAdd(localHist[digit], 1);
+    }
+    barrier();
+
+    if(lid < 256) {
+        uint count = localHist[lid];
+        groupHist[gid * 256 + lid] = count;
+    }
+}

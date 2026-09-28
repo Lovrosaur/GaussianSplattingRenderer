@@ -1,0 +1,75 @@
+#version 450
+
+layout(local_size_x = 256) in;
+
+struct Splat {
+    vec3 center;
+    uint id;
+    vec3 scale;
+    float opacity;
+    vec4 rot;
+    vec4 sh[16];
+};
+layout(std430, binding=2) readonly buffer splat_buffer {
+    Splat splats[];
+};
+
+layout(std430, binding = 3) buffer Models {
+    mat4 models[];
+};
+
+layout(std430, binding = 1) buffer Indices {
+    uint indices[];
+};
+
+layout(std430, binding = 4) buffer Keys {
+    uvec2 keys[];
+};
+
+layout(std430,binding=10) buffer Counter {
+    uint visibleCount;
+};
+
+uniform mat4 view;
+uniform mat4 projection;
+uniform uint num_splats;
+// uniform float nearDepth;
+// uniform float farDepth;
+
+uint floatToSortableUint(float f, uint id)
+{
+    uint u = floatBitsToUint(f);
+    u = ((u & 0x80000000) != 0U) ? ~u : u ^ 0x80000000;
+    return u;
+}
+
+void main()
+{
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= num_splats) return;
+    mat4 model = models[splats[id].id];
+    if (model[3][3] == 0) return;
+    vec4 p = view * model * vec4(splats[id].center,1);
+
+    float depth = p.z;
+    p = projection * p;
+
+    // if(depth < nearDepth || depth > farDepth)
+    //     return;
+
+    float bounds = 2 * p.w;
+    if (p.z < -p.w
+        || p.z > p.w
+        || p.x < -bounds
+        || p.x > bounds
+        || p.y < -bounds
+        || p.y > bounds
+        ) {
+        return;
+    }
+    
+    uint idx = atomicAdd(visibleCount,1);
+
+    indices[idx] = id;
+    keys[idx] = uvec2(floatToSortableUint(depth,id),id);
+}

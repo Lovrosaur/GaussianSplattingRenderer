@@ -1,0 +1,49 @@
+#version 450
+
+layout(local_size_x = 256) in;
+
+
+layout(std430, binding = 7) buffer GroupOffset
+{
+    uint groupOffsets[];
+};
+layout(std430, binding = 8) buffer Offsets
+{
+    uint offsets[];
+};
+layout(std430, binding = 9) buffer PartialSums
+{ 
+    uint partialSums[]; 
+};
+layout(std430,binding=10) buffer Counter
+{
+    uint visibleCount;
+};
+
+shared uint temp[256];
+
+void main() {
+    uint digit = gl_LocalInvocationID.x;
+    uint numBlocks = ((visibleCount + 255) / 256 + 15) / 16;
+
+    uint runningSum = 0;
+    for (uint b = 0; b < numBlocks; b++) {
+        uint idx = b * 256 + digit;
+        uint val = partialSums[idx];
+        partialSums[idx] = runningSum;
+        runningSum += val;
+    }
+    
+    temp[digit] = runningSum; 
+    barrier();
+
+    for (uint stride = 1; stride < 256; stride <<= 1) {
+        uint val = (digit >= stride) ? temp[digit - stride] : 0;
+        barrier();
+        temp[digit] += val;
+        barrier();
+    }
+
+    offsets[digit] = temp[digit] - runningSum;
+}
+

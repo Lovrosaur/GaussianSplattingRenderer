@@ -1,0 +1,38 @@
+#version 450
+layout(local_size_x = 1) in;
+
+struct DrawCommand {
+    uint count;
+    uint instanceCount;
+    uint firstIndex;
+    uint baseVertex;
+    uint baseInstance;
+};
+
+struct DispatchCommand {
+    uint x, y, z;
+};
+
+layout(std430,binding=10) buffer Counter
+{
+    uint visibleCount;
+    DrawCommand draw;
+    DispatchCommand dispatch;
+    DispatchCommand dispatch2;
+};
+
+void main() {
+    draw.count = 6;
+    draw.instanceCount = visibleCount;
+    draw.firstIndex = 0;
+    draw.baseVertex = 0;
+    draw.baseInstance = 0;
+
+    dispatch.x = (visibleCount + 255) / 256;
+    dispatch.y = 1;
+    dispatch.z = 1;
+
+    dispatch2.x = ( dispatch.x + 15 ) / 16;
+    dispatch2.y = 1;
+    dispatch2.z = 1;
+}
